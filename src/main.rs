@@ -1,7 +1,9 @@
-use std::{collections::HashMap, error::Error, fs::File};
+use std::{collections::HashMap, error::Error, fs::File, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use swayipc::{Connection, Event, EventType, Fallible, Node, NodeType, WindowChange};
+
+use clap::Parser;
 
 #[derive(Deserialize, Serialize, Default, Debug)]
 struct SwayNameManagerConfig {
@@ -160,31 +162,65 @@ impl SwayNameManager {
         Ok(())
     }
 
-    fn new(config_path: String) -> Self {
+    fn new(config_path: Option<PathBuf>) -> Self {
         let mut config = SwayNameManagerConfig {
             ..Default::default()
         };
-        let file_result = File::open(config_path);
-        match file_result {
-            Ok(config_file) => {
-                let serde_result = serde_json::from_reader(config_file);
-                match serde_result {
-                    Ok(result) => {
-                        config = result;
+        if let Some(config_path) = config_path {
+            let file_result = File::open(config_path);
+            match file_result {
+                Ok(config_file) => {
+                    let serde_result = serde_json::from_reader(config_file);
+                    match serde_result {
+                        Ok(result) => {
+                            config = result;
+                        }
+                        Err(e) => {
+                            println!("Error while reading config: {}. Using default config", e)
+                        }
                     }
-                    Err(e) => println!("Error while reading config: {}. Using default config", e),
                 }
-            }
-            Err(e) => {
-                println!("Failed to open config file: {}. Using default config", e);
+                Err(e) => {
+                    println!("Failed to open config file: {}. Using default config", e);
+                }
             }
         }
         Self { config }
     }
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Config to load
+    #[arg(short, long)]
+    config: Option<String>,
+}
+
 fn main() -> Fallible<()> {
-    let mut manager = SwayNameManager::new("config.json".to_string());
+    let config_dir = dirs::config_dir().unwrap_or_default();
+    let home_config = config_dir.join("swayautonames/config.json");
+    let config_search_paths = [
+        PathBuf::from("./config.json"),
+        home_config,
+        PathBuf::from("/etc/swayautonames/config.json"),
+    ];
+    let selected_config;
+    let args = Args::parse();
+    if let Some(config_path) = args.config {
+        selected_config = Some(PathBuf::from(&config_path));
+    } else {
+        let existing_config = config_search_paths
+            .iter()
+            .find(|config_path| {
+                println!("Testing {:?}", config_path);
+                config_path.exists()
+            })
+            .map(|f| f.clone());
+        selected_config = existing_config;
+    }
+    println!("Starting swayautonames with config: {:?}", selected_config);
+    let mut manager = SwayNameManager::new(selected_config);
     manager.run().unwrap();
     Ok(())
 }
