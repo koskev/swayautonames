@@ -1,6 +1,8 @@
 use std::{collections::HashMap, error::Error, fs::File, path::PathBuf};
 
+use log::*;
 use serde::{Deserialize, Serialize};
+use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
 use swayipc::{Connection, Event, EventType, Fallible, Node, NodeType, WindowChange};
 
 use clap::Parser;
@@ -155,7 +157,7 @@ impl SwayNameManager {
                     _ => {}
                 },
                 Err(err) => {
-                    println!("Error in event: {}", err);
+                    error!("Error in event: {}", err);
                 }
             }
         }
@@ -176,12 +178,12 @@ impl SwayNameManager {
                             config = result;
                         }
                         Err(e) => {
-                            println!("Error while reading config: {}. Using default config", e)
+                            error!("Error while reading config: {}. Using default config", e)
                         }
                     }
                 }
                 Err(e) => {
-                    println!("Failed to open config file: {}. Using default config", e);
+                    error!("Failed to open config file: {}. Using default config", e);
                 }
             }
         }
@@ -198,6 +200,13 @@ struct Args {
 }
 
 fn main() -> Fallible<()> {
+    TermLogger::init(
+        LevelFilter::Trace,
+        Config::default(),
+        TerminalMode::Stdout,
+        ColorChoice::Auto,
+    )
+    .unwrap();
     let config_dir = dirs::config_dir().unwrap_or_default();
     let home_config = config_dir.join("swayautonames/config.json");
     let config_search_paths = [
@@ -213,13 +222,13 @@ fn main() -> Fallible<()> {
         let existing_config = config_search_paths
             .iter()
             .find(|config_path| {
-                println!("Testing {:?}", config_path);
+                info!("Testing {:?}", config_path);
                 config_path.exists()
             })
             .map(|f| f.clone());
         selected_config = existing_config;
     }
-    println!("Starting swayautonames with config: {:?}", selected_config);
+    info!("Starting swayautonames with config: {:?}", selected_config);
     let mut manager = SwayNameManager::new(selected_config);
     manager.run().unwrap();
     Ok(())
