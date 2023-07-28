@@ -35,13 +35,13 @@ impl Autorename for Node {
         let nodes: Vec<&Node> = workspaces
             .iter()
             .filter(|workspace| workspace.contains(node))
-            .map(|node| *node)
+            .copied()
             .collect();
 
         if nodes.len() == 1 {
             Ok(nodes.get(0).unwrap())
         } else {
-            return Err("Window is on multiple workspaces!".into());
+            Err("Window is on multiple workspaces!".into())
         }
     }
 
@@ -103,26 +103,22 @@ impl Autorename for Node {
                     .get_window_names()
                     .iter()
                     .map(|name| {
-                        let new_name;
                         let mapped_name = name_config.app_symbols.get(name);
                         match mapped_name {
-                            Some(symbol) => {
-                                new_name = symbol.clone();
-                            }
-                            None => new_name = name.clone(),
+                            Some(symbol) => symbol.clone(),
+                            None => name.clone(),
                         }
-                        new_name
                     })
                     .rev()
                     .collect();
-                let new_name;
                 // Special case if the list is empty
-                if window_names.len() == 0 {
-                    new_name = format!("{}", workspace_num);
+
+                let new_name = if window_names.is_empty() {
+                    format!("{}", workspace_num)
                 } else {
-                    new_name = format!("{}: {}", workspace_num, window_names.join("|"));
-                }
-                let old_name = node.name.clone().unwrap_or("".to_string());
+                    format!("{}: {}", workspace_num, window_names.join("|"))
+                };
+                let old_name = node.name.clone().unwrap_or_default();
                 // Only send the command if the new name differs
                 if new_name != old_name {
                     let mut sway_connection = Connection::new().unwrap();
@@ -225,7 +221,7 @@ fn main() -> Fallible<()> {
                 info!("Testing {:?}", config_path);
                 config_path.exists()
             })
-            .map(|f| f.clone());
+            .cloned();
         selected_config = existing_config;
     }
     info!("Starting swayautonames with config: {:?}", selected_config);
