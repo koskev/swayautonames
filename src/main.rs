@@ -168,7 +168,7 @@ impl SwayNameManager {
             let file_result = File::open(config_path);
             match file_result {
                 Ok(config_file) => {
-                    let serde_result = serde_json::from_reader(config_file);
+                    let serde_result = serde_yaml::from_reader(config_file);
                     match serde_result {
                         Ok(result) => {
                             config = result;
