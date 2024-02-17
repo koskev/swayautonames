@@ -7,7 +7,7 @@ use std::{
 };
 
 use futures_util::stream::StreamExt;
-use inotify::{Inotify, WatchMask};
+use inotify::{EventMask, Inotify, WatchMask};
 use log::*;
 use serde::{Deserialize, Serialize};
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
@@ -272,14 +272,23 @@ async fn main() -> Fallible<()> {
     });
     if let Some(config) = &selected_config {
         let inotify = Inotify::init()?;
-        inotify.watches().add(config, WatchMask::MODIFY)?;
+        let mask = WatchMask::MODIFY | WatchMask::CREATE | WatchMask::DELETE_SELF;
+        inotify.watches().add(config, mask)?;
 
         let mut buffer = [0; 1024];
         let mut stream = inotify.into_event_stream(&mut buffer)?;
 
         while let Some(event_or_error) = stream.next().await {
-            println!("event: {:?}", event_or_error?);
-            *manager_config.write().unwrap() = SwayNameManagerConfig::from_file(&config);
+            if let Ok(event) = event_or_error {
+                if event.mask.contains(EventMask::DELETE_SELF) {
+                    // Recreate inotify. Some editors delete the file and recreate it (e.g. neovim)
+                    stream.watches().add(config, mask)?;
+                }
+            }
+            let new_config = SwayNameManagerConfig::from_file(&config);
+            *manager_config.write().unwrap() = new_config.clone();
+            let root_node = Connection::new().await?.get_tree().await?;
+            root_node.update_workspace_names(&new_config).await;
         }
     }
     Ok(())
