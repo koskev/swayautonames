@@ -1,9 +1,10 @@
 use std::{collections::HashMap, error::Error, fs::File, path::PathBuf};
 
+use futures_util::stream::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
-use swayipc::{Connection, Event, EventType, Fallible, Node, NodeType, WindowChange};
+use swayipc_async::{Connection, Event, EventType, Fallible, Node, NodeType, WindowChange};
 
 use clap::Parser;
 
@@ -21,7 +22,7 @@ trait Autorename {
     fn get_workspace<'a>(&'a self, node: &'a Node) -> Result<&'a Node, Box<dyn Error>>;
     fn get_workspace_nodes(&self) -> Vec<&Node>;
     fn get_window_names(&self) -> Vec<String>;
-    fn update_workspace_names(&self, name_config: &SwayNameManagerConfig);
+    async fn update_workspace_names(&self, name_config: &SwayNameManagerConfig);
 }
 
 impl Autorename for Node {
@@ -86,7 +87,7 @@ impl Autorename for Node {
         names
     }
 
-    fn update_workspace_names(&self, name_config: &SwayNameManagerConfig) {
+    async fn update_workspace_names(&self, name_config: &SwayNameManagerConfig) {
         let mut nodes_to_search: Vec<&Node> = vec![self];
         // Iterate over self including all children
         while let Some(node) = nodes_to_search.pop() {
@@ -121,10 +122,10 @@ impl Autorename for Node {
                 let old_name = node.name.clone().unwrap_or_default();
                 // Only send the command if the new name differs
                 if new_name != old_name {
-                    let mut sway_connection = Connection::new().unwrap();
+                    let mut sway_connection = Connection::new().await.unwrap();
                     let rename_commands =
                         format!("rename workspace \"{}\" to \"{}\"", old_name, new_name);
-                    sway_connection.run_command(rename_commands).unwrap();
+                    sway_connection.run_command(rename_commands).await.unwrap();
                 }
             }
         }
@@ -132,20 +133,21 @@ impl Autorename for Node {
 }
 
 impl SwayNameManager {
-    fn run(&mut self) -> Fallible<()> {
-        let root_node = Connection::new()?.get_tree()?;
-        root_node.update_workspace_names(&self.config);
+    async fn run(&mut self) -> Fallible<()> {
+        let root_node = Connection::new().await?.get_tree().await?;
+        root_node.update_workspace_names(&self.config).await;
         let subs = [EventType::Window];
-        let sway_connection = Connection::new()?;
-        for e in sway_connection.subscribe(subs)? {
-            match e {
+        let sway_connection = Connection::new().await?;
+        let mut events = sway_connection.subscribe(subs).await?;
+        while let Some(event) = events.next().await {
+            match event {
                 Ok(event) => match event {
                     Event::Window(windowevent) => match windowevent.change {
                         // TODO: On New we don't need to update all of them
                         WindowChange::New | WindowChange::Close | WindowChange::Move => {
                             //let _ = Self::handle_event(&windowevent.container);
-                            let root_node = Connection::new()?.get_tree()?;
-                            root_node.update_workspace_names(&self.config);
+                            let root_node = Connection::new().await?.get_tree().await?;
+                            root_node.update_workspace_names(&self.config).await;
                         }
                         _ => {}
                     },
@@ -229,7 +231,8 @@ fn get_config(aditional_paths: Option<PathBuf>) -> Option<PathBuf> {
     selected_config
 }
 
-fn main() -> Fallible<()> {
+#[tokio::main]
+async fn main() -> Fallible<()> {
     TermLogger::init(
         LevelFilter::Trace,
         Config::default(),
@@ -241,6 +244,6 @@ fn main() -> Fallible<()> {
     let selected_config = get_config(args.config);
     info!("Starting swayautonames with config: {:?}", selected_config);
     let mut manager = SwayNameManager::new(selected_config);
-    manager.run().unwrap();
+    manager.run().await.unwrap();
     Ok(())
 }

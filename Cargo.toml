@@ -8,8 +8,11 @@ edition = "2021"
 [dependencies]
 clap = { version = "4.2.7", features = ["derive"] }
 dirs = "5.0.1"
+futures-util = "0.3.30"
+inotify = "0.10.2"
 log = "0.4.17"
 serde = { version = "1.0.162", features = ["derive"] }
 serde_yaml = "0.9.27"
 simplelog = "0.12.1"
-swayipc = "3.0.1"
+swayipc-async = "2.0.2"
+tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
