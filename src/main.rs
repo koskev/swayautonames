@@ -1,6 +1,13 @@
-use std::{collections::HashMap, error::Error, fs::File, path::PathBuf};
+use std::{
+    collections::HashMap,
+    error::Error,
+    fs::File,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
 
 use futures_util::stream::StreamExt;
+use inotify::{Inotify, WatchMask};
 use log::*;
 use serde::{Deserialize, Serialize};
 use simplelog::{ColorChoice, Config, LevelFilter, TermLogger, TerminalMode};
@@ -8,13 +15,38 @@ use swayipc_async::{Connection, Event, EventType, Fallible, Node, NodeType, Wind
 
 use clap::Parser;
 
-#[derive(Deserialize, Serialize, Default, Debug)]
+#[derive(Deserialize, Serialize, Default, Debug, Clone)]
 struct SwayNameManagerConfig {
     app_symbols: HashMap<String, String>,
 }
 
+impl SwayNameManagerConfig {
+    fn from_file(config_path: &PathBuf) -> Self {
+        let file_result = File::open(config_path);
+        match file_result {
+            Ok(config_file) => {
+                let serde_result = serde_yaml::from_reader(config_file);
+                match serde_result {
+                    Ok(result) => {
+                        return result;
+                    }
+                    Err(e) => {
+                        error!("Error while reading config: {}. Using default config", e)
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Failed to open config file: {}. Using default config", e);
+            }
+        }
+        Self {
+            ..Default::default()
+        }
+    }
+}
+
 struct SwayNameManager {
-    config: SwayNameManagerConfig,
+    config: Arc<RwLock<SwayNameManagerConfig>>,
 }
 
 trait Autorename {
@@ -134,8 +166,9 @@ impl Autorename for Node {
 
 impl SwayNameManager {
     async fn run(&mut self) -> Fallible<()> {
+        let config = self.config.read().unwrap().clone();
         let root_node = Connection::new().await?.get_tree().await?;
-        root_node.update_workspace_names(&self.config).await;
+        root_node.update_workspace_names(&config).await;
         let subs = [EventType::Window];
         let sway_connection = Connection::new().await?;
         let mut events = sway_connection.subscribe(subs).await?;
@@ -147,7 +180,8 @@ impl SwayNameManager {
                         WindowChange::New | WindowChange::Close | WindowChange::Move => {
                             //let _ = Self::handle_event(&windowevent.container);
                             let root_node = Connection::new().await?.get_tree().await?;
-                            root_node.update_workspace_names(&self.config).await;
+                            let config = self.config.read().unwrap().clone();
+                            root_node.update_workspace_names(&config).await;
                         }
                         _ => {}
                     },
@@ -166,26 +200,14 @@ impl SwayNameManager {
         let mut config = SwayNameManagerConfig {
             ..Default::default()
         };
+
         if let Some(config_path) = config_path {
-            let file_result = File::open(config_path);
-            match file_result {
-                Ok(config_file) => {
-                    let serde_result = serde_yaml::from_reader(config_file);
-                    match serde_result {
-                        Ok(result) => {
-                            config = result;
-                        }
-                        Err(e) => {
-                            error!("Error while reading config: {}. Using default config", e)
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to open config file: {}. Using default config", e);
-                }
-            }
+            config = SwayNameManagerConfig::from_file(&config_path);
         }
-        Self { config }
+
+        Self {
+            config: Arc::new(RwLock::new(config)),
+        }
     }
 }
 
@@ -243,7 +265,22 @@ async fn main() -> Fallible<()> {
     let args = Args::parse();
     let selected_config = get_config(args.config);
     info!("Starting swayautonames with config: {:?}", selected_config);
-    let mut manager = SwayNameManager::new(selected_config);
-    manager.run().await.unwrap();
+    let mut manager = SwayNameManager::new(selected_config.clone());
+    let manager_config = manager.config.clone();
+    tokio::spawn(async move {
+        manager.run().await.unwrap();
+    });
+    if let Some(config) = &selected_config {
+        let inotify = Inotify::init()?;
+        inotify.watches().add(config, WatchMask::MODIFY)?;
+
+        let mut buffer = [0; 1024];
+        let mut stream = inotify.into_event_stream(&mut buffer)?;
+
+        while let Some(event_or_error) = stream.next().await {
+            println!("event: {:?}", event_or_error?);
+            *manager_config.write().unwrap() = SwayNameManagerConfig::from_file(&config);
+        }
+    }
     Ok(())
 }
