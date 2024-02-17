@@ -192,27 +192,29 @@ impl SwayNameManager {
 struct Args {
     /// Config to load
     #[arg(short, long)]
-    config: Option<String>,
+    config: Option<PathBuf>,
 }
 
-fn main() -> Fallible<()> {
-    TermLogger::init(
-        LevelFilter::Trace,
-        Config::default(),
-        TerminalMode::Stdout,
-        ColorChoice::Auto,
-    )
-    .unwrap();
+fn get_config_paths(aditional_paths: &Option<PathBuf>) -> Vec<PathBuf> {
     let config_dir = dirs::config_dir().unwrap_or_default();
     let home_config = config_dir.join("swayautonames/config.json");
-    let config_search_paths = [
-        PathBuf::from("./config.json"),
-        home_config,
-        PathBuf::from("/etc/swayautonames/config.json"),
-    ];
+    let mut config_search_paths = vec![];
+
+    if let Some(p) = aditional_paths {
+        config_search_paths.push(p.clone());
+    }
+
+    config_search_paths.push(PathBuf::from("./config.json"));
+    config_search_paths.push(home_config);
+    config_search_paths.push(PathBuf::from("/etc/swayautonames/config.json"));
+
+    config_search_paths
+}
+
+fn get_config(aditional_paths: Option<PathBuf>) -> Option<PathBuf> {
+    let config_search_paths = get_config_paths(&aditional_paths);
     let selected_config;
-    let args = Args::parse();
-    if let Some(config_path) = args.config {
+    if let Some(config_path) = aditional_paths {
         selected_config = Some(PathBuf::from(&config_path));
     } else {
         let existing_config = config_search_paths
@@ -224,6 +226,19 @@ fn main() -> Fallible<()> {
             .cloned();
         selected_config = existing_config;
     }
+    selected_config
+}
+
+fn main() -> Fallible<()> {
+    TermLogger::init(
+        LevelFilter::Trace,
+        Config::default(),
+        TerminalMode::Stdout,
+        ColorChoice::Auto,
+    )
+    .unwrap();
+    let args = Args::parse();
+    let selected_config = get_config(args.config);
     info!("Starting swayautonames with config: {:?}", selected_config);
     let mut manager = SwayNameManager::new(selected_config);
     manager.run().unwrap();
