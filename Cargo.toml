@@ -10,7 +10,7 @@ clap = { version = "4.2.7", features = ["derive"] }
 dirs = "5.0.1"
 futures-util = "0.3.30"
 inotify = "0.10.2"
-log = "0.4.17"
+log = "0.4.21"
 serde = { version = "1.0.162", features = ["derive"] }
 serde_yaml = "0.9.27"
 simplelog = "0.12.1"
