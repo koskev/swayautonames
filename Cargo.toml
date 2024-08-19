@@ -9,7 +9,7 @@ edition = "2021"
 clap = { version = "4.5.4", features = ["derive"] }
 dirs = "5.0.1"
 futures-util = "0.3.30"
-inotify = "0.10.2"
+inotify = "0.11.0"
 log = "0.4.21"
 serde = { version = "1.0.201", features = ["derive"] }
 serde_yaml = "0.9.34"
