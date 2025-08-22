@@ -26,3 +26,7 @@ E.g.
 ```
 bindsym $mod+1 workspace number 1
 ```
+
+# Supported window managers
+ - Sway
+ - Hyprland

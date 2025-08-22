@@ -29,7 +29,7 @@ trait WindowManager {
         let workspaces = self.get_workspaces()?;
         for i in workspaces {
             let name = self.get_workspace_name(i)?;
-            self.update_workspace(i, &name)?;
+            self.update_workspace(i, &format!("{i}:{name}"))?;
         }
         Ok(())
     }
@@ -59,7 +59,7 @@ fn get_config_paths(aditional_paths: &Option<PathBuf>) -> Vec<PathBuf> {
     config_search_paths
 }
 
-fn get_config(aditional_paths: Option<PathBuf>) -> Option<PathBuf> {
+fn get_config_path(aditional_paths: Option<PathBuf>) -> Option<PathBuf> {
     let config_search_paths = get_config_paths(&aditional_paths);
     let selected_config;
     if let Some(config_path) = aditional_paths {
@@ -87,14 +87,20 @@ async fn main() -> Result<()> {
     )
     .unwrap();
     let args = Args::parse();
-    let selected_config = get_config(args.config);
-    info!("Starting swayautonames with config: {selected_config:?}");
-    let mut manager = SwayNameManager::new(selected_config.clone());
-    let manager_config = manager.config.clone();
-    let hyprland_config = manager.config.clone();
+    let selected_config_path = get_config_path(args.config);
+    info!("Starting swayautonames with config: {selected_config_path:?}");
+    let config = Arc::new(RwLock::new(SwayNameManagerConfig::from_file(
+        &selected_config_path.clone().unwrap_or_default(),
+    )));
+    #[cfg(feature = "sway")]
+    let mut manager = SwayNameManager::new(config.clone());
+    #[cfg(feature = "sway")]
     tokio::spawn(async move {
         manager.run().await.unwrap();
     });
+    #[cfg(feature = "hyprland")]
+    let hyprland_config = config.clone();
+    #[cfg(feature = "hyprland")]
     tokio::spawn(async move {
         wm::hyprland::HyprlandManager {
             config: hyprland_config,
@@ -103,10 +109,10 @@ async fn main() -> Result<()> {
         .await
         .unwrap();
     });
-    if let Some(config) = &selected_config {
+    if let Some(config_path) = &selected_config_path {
         let inotify = Inotify::init()?;
         let mask = WatchMask::MODIFY | WatchMask::CREATE | WatchMask::DELETE_SELF;
-        inotify.watches().add(config, mask)?;
+        inotify.watches().add(config_path, mask)?;
 
         let mut buffer = [0; 1024];
         let mut stream = inotify.into_event_stream(&mut buffer)?;
@@ -115,11 +121,11 @@ async fn main() -> Result<()> {
             if let Ok(event) = event_or_error {
                 if event.mask.contains(EventMask::DELETE_SELF) {
                     // Recreate inotify. Some editors delete the file and recreate it (e.g. neovim)
-                    stream.watches().add(config, mask)?;
+                    stream.watches().add(config_path, mask)?;
                 }
             }
-            let new_config = SwayNameManagerConfig::from_file(config);
-            *manager_config.write().unwrap() = new_config.clone();
+            let new_config = SwayNameManagerConfig::from_file(config_path);
+            *config.write().unwrap() = new_config.clone();
         }
     }
     Ok(())

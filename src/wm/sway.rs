@@ -157,17 +157,7 @@ impl SwayNameManager {
         Ok(())
     }
 
-    pub fn new(config_path: Option<PathBuf>) -> Self {
-        let mut config = SwayNameManagerConfig {
-            ..Default::default()
-        };
-
-        if let Some(config_path) = config_path {
-            config = SwayNameManagerConfig::from_file(&config_path);
-        }
-
-        Self {
-            config: Arc::new(RwLock::new(config)),
-        }
+    pub fn new(config: Arc<RwLock<SwayNameManagerConfig>>) -> Self {
+        Self { config }
     }
 }
