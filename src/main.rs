@@ -7,6 +7,13 @@ use std::{
 };
 
 use futures_util::stream::StreamExt;
+use hyprland::event_listener::AsyncEventListener;
+use hyprland::prelude::*;
+use hyprland::{
+    async_closure,
+    dispatch::{Dispatch, DispatchType},
+};
+use hyprland::{data::*, event_listener::EventListener};
 use inotify::{EventMask, Inotify, WatchMask};
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -47,6 +54,12 @@ impl SwayNameManagerConfig {
 
 struct SwayNameManager {
     config: Arc<RwLock<SwayNameManagerConfig>>,
+}
+
+trait WindowManager {
+    fn get_workspace_num(&self) -> i32;
+    fn get_workspace_name(&self, id: i32) -> String;
+    fn update_workspace(&self, id: i32, name: &str);
 }
 
 trait Autorename {
@@ -253,6 +266,56 @@ fn get_config(aditional_paths: Option<PathBuf>) -> Option<PathBuf> {
     selected_config
 }
 
+struct HyprlandManager {
+    config: Arc<RwLock<SwayNameManagerConfig>>,
+}
+
+impl HyprlandManager {
+    fn update(config: Arc<RwLock<SwayNameManagerConfig>>) -> Result<(), Box<dyn Error>> {
+        let workspaces = Workspaces::get()?.to_vec();
+        let config = config.read().unwrap();
+
+        let clients = Clients::get()?.to_vec();
+        for workspace in workspaces {
+            let workspace_clients = clients.iter().filter(|c| c.workspace.id == workspace.id);
+            let names: Vec<String> = workspace_clients
+                .map(|client| {
+                    config
+                        .app_symbols
+                        .get(&client.class.clone())
+                        .unwrap_or(&client.class.clone())
+                        .clone()
+                })
+                .collect();
+            let new_name = names.join("|");
+
+            Dispatch::call(DispatchType::RenameWorkspace(workspace.id, Some(&new_name)))?
+        }
+
+        Ok(())
+    }
+    async fn run(&self) -> Fallible<()> {
+        // Create a event listener
+        let mut event_listener = EventListener::new();
+        let config = self.config.clone();
+
+        event_listener.add_window_opened_handler(move |_| {
+            Self::update(config.clone()).unwrap();
+        });
+        let config = self.config.clone();
+        event_listener.add_window_moved_handler(move |_| {
+            Self::update(config.clone()).unwrap();
+        });
+        let config = self.config.clone();
+        event_listener.add_window_closed_handler(move |_| {
+            Self::update(config.clone()).unwrap();
+        });
+        event_listener.start_listener();
+
+        Ok(())
+    }
+}
+
 #[tokio::main]
 async fn main() -> Fallible<()> {
     TermLogger::init(
@@ -267,8 +330,17 @@ async fn main() -> Fallible<()> {
     info!("Starting swayautonames with config: {:?}", selected_config);
     let mut manager = SwayNameManager::new(selected_config.clone());
     let manager_config = manager.config.clone();
+    let hyprland_config = manager.config.clone();
+    //tokio::spawn(async move {
+    //    manager.run().await.unwrap();
+    //});
     tokio::spawn(async move {
-        manager.run().await.unwrap();
+        HyprlandManager {
+            config: hyprland_config,
+        }
+        .run()
+        .await
+        .unwrap();
     });
     if let Some(config) = &selected_config {
         let inotify = Inotify::init()?;
