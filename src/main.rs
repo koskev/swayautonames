@@ -7,12 +7,8 @@ use std::{
 };
 
 use futures_util::stream::StreamExt;
-use hyprland::event_listener::AsyncEventListener;
+use hyprland::dispatch::{Dispatch, DispatchType};
 use hyprland::prelude::*;
-use hyprland::{
-    async_closure,
-    dispatch::{Dispatch, DispatchType},
-};
 use hyprland::{data::*, event_listener::EventListener};
 use inotify::{EventMask, Inotify, WatchMask};
 use log::*;
@@ -38,12 +34,12 @@ impl SwayNameManagerConfig {
                         return result;
                     }
                     Err(e) => {
-                        error!("Error while reading config: {}. Using default config", e)
+                        error!("Error while reading config: {e}. Using default config")
                     }
                 }
             }
             Err(e) => {
-                error!("Failed to open config file: {}. Using default config", e);
+                error!("Failed to open config file: {e}. Using default config");
             }
         }
         Self {
@@ -85,7 +81,7 @@ impl Autorename for Node {
             .collect();
 
         if nodes.len() == 1 {
-            Ok(nodes.get(0).unwrap())
+            Ok(nodes.first().unwrap())
         } else {
             Err("Window is on multiple workspaces!".into())
         }
@@ -160,7 +156,7 @@ impl Autorename for Node {
                 // Special case if the list is empty
 
                 let new_name = if window_names.is_empty() {
-                    format!("{}", workspace_num)
+                    format!("{workspace_num}")
                 } else {
                     format!("{}: {}", workspace_num, window_names.join("|"))
                 };
@@ -169,7 +165,7 @@ impl Autorename for Node {
                 if new_name != old_name {
                     let mut sway_connection = Connection::new().await.unwrap();
                     let rename_commands =
-                        format!("rename workspace \"{}\" to \"{}\"", old_name, new_name);
+                        format!("rename workspace \"{old_name}\" to \"{new_name}\"",);
                     sway_connection.run_command(rename_commands).await.unwrap();
                 }
             }
@@ -187,22 +183,22 @@ impl SwayNameManager {
         let mut events = sway_connection.subscribe(subs).await?;
         while let Some(event) = events.next().await {
             match event {
-                Ok(event) => match event {
-                    Event::Window(windowevent) => match windowevent.change {
-                        // TODO: On New we don't need to update all of them
-                        WindowChange::New | WindowChange::Close | WindowChange::Move => {
-                            //let _ = Self::handle_event(&windowevent.container);
-                            let root_node = Connection::new().await?.get_tree().await?;
-                            let config = self.config.read().unwrap().clone();
-                            root_node.update_workspace_names(&config).await;
+                Ok(event) => {
+                    if let Event::Window(windowevent) = event {
+                        match windowevent.change {
+                            // TODO: On New we don't need to update all of them
+                            WindowChange::New | WindowChange::Close | WindowChange::Move => {
+                                //let _ = Self::handle_event(&windowevent.container);
+                                let root_node = Connection::new().await?.get_tree().await?;
+                                let config = self.config.read().unwrap().clone();
+                                root_node.update_workspace_names(&config).await;
+                            }
+                            _ => {}
                         }
-                        _ => {}
-                    },
-
-                    _ => {}
-                },
+                    }
+                }
                 Err(err) => {
-                    error!("Error in event: {}", err);
+                    error!("Error in event: {err}");
                 }
             }
         }
@@ -257,7 +253,7 @@ fn get_config(aditional_paths: Option<PathBuf>) -> Option<PathBuf> {
         let existing_config = config_search_paths
             .iter()
             .find(|config_path| {
-                info!("Testing {:?}", config_path);
+                info!("Testing {config_path:?}");
                 config_path.exists()
             })
             .cloned();
@@ -310,7 +306,7 @@ impl HyprlandManager {
         event_listener.add_window_closed_handler(move |_| {
             Self::update(config.clone()).unwrap();
         });
-        event_listener.start_listener();
+        let _ = event_listener.start_listener();
 
         Ok(())
     }
@@ -327,13 +323,13 @@ async fn main() -> Fallible<()> {
     .unwrap();
     let args = Args::parse();
     let selected_config = get_config(args.config);
-    info!("Starting swayautonames with config: {:?}", selected_config);
+    info!("Starting swayautonames with config: {selected_config:?}");
     let mut manager = SwayNameManager::new(selected_config.clone());
     let manager_config = manager.config.clone();
     let hyprland_config = manager.config.clone();
-    //tokio::spawn(async move {
-    //    manager.run().await.unwrap();
-    //});
+    tokio::spawn(async move {
+        manager.run().await.unwrap();
+    });
     tokio::spawn(async move {
         HyprlandManager {
             config: hyprland_config,
@@ -357,7 +353,7 @@ async fn main() -> Fallible<()> {
                     stream.watches().add(config, mask)?;
                 }
             }
-            let new_config = SwayNameManagerConfig::from_file(&config);
+            let new_config = SwayNameManagerConfig::from_file(config);
             *manager_config.write().unwrap() = new_config.clone();
             let root_node = Connection::new().await?.get_tree().await?;
             root_node.update_workspace_names(&new_config).await;
