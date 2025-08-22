@@ -1,18 +1,21 @@
 use std::{
     error::Error,
-    path::PathBuf,
     sync::{Arc, RwLock},
 };
 
+use anyhow::anyhow;
 use futures_util::StreamExt;
 use log::error;
 use swayipc_async::{Connection, Event, EventType, Fallible, Node, NodeType, WindowChange};
 
-use crate::{config::SwayNameManagerConfig, SwayNameManager};
+use crate::{SwayNameManager, WindowManager, config::SwayNameManagerConfig};
 
 trait Autorename {
+    #[allow(dead_code)]
     fn contains(&self, node: &Node) -> bool;
+    #[allow(dead_code)]
     fn get_workspace<'a>(&'a self, node: &'a Node) -> Result<&'a Node, Box<dyn Error>>;
+    #[allow(dead_code)]
     fn get_workspace_nodes(&self) -> Vec<&Node>;
     fn get_window_names(&self) -> Vec<String>;
     async fn update_workspace_names(&self, name_config: &SwayNameManagerConfig);
@@ -96,13 +99,7 @@ impl Autorename for Node {
                 let window_names: Vec<String> = node
                     .get_window_names()
                     .iter()
-                    .map(|name| {
-                        let mapped_name = name_config.app_symbols.get(name);
-                        match mapped_name {
-                            Some(symbol) => symbol.clone(),
-                            None => name.clone(),
-                        }
-                    })
+                    .map(|name| name_config.get_symbol(name))
                     .rev()
                     .collect();
                 // Special case if the list is empty
@@ -125,6 +122,67 @@ impl Autorename for Node {
     }
 }
 
+impl WindowManager for SwayNameManager {
+    fn update_workspace(&self, id: i32, name: &str) -> anyhow::Result<()> {
+        // TODO: make everything async
+        futures::executor::block_on(async {
+            let mut connection = Connection::new().await.unwrap();
+            let workspaces = connection.get_workspaces().await.unwrap();
+
+            let workspace = workspaces
+                .iter()
+                .find(|w| w.id == id as i64)
+                .ok_or(anyhow!("not found"))
+                .unwrap();
+            let old_name = workspace.name.clone();
+            let rename_commands = format!("rename workspace \"{old_name}\" to \"{name}\"",);
+            connection.run_command(rename_commands).await.unwrap();
+        });
+
+        Ok(())
+    }
+
+    fn get_workspaces(&self) -> anyhow::Result<Vec<i32>> {
+        let result = futures::executor::block_on(async {
+            let mut connection = Connection::new().await.unwrap();
+            let workspaces = connection.get_workspaces().await.unwrap();
+            workspaces.iter().map(|w| w.id as i32).collect()
+        });
+        Ok(result)
+    }
+
+    fn get_workspace_name(&self, id: i32) -> anyhow::Result<String> {
+        let result = futures::executor::block_on(async {
+            let root_node = Connection::new().await.unwrap().get_tree().await.unwrap();
+            let mut nodes_to_search: Vec<&Node> = vec![&root_node];
+            // Iterate over self including all children
+            while let Some(node) = nodes_to_search.pop() {
+                node.nodes.iter().for_each(|child_node| {
+                    nodes_to_search.push(child_node);
+                });
+                // Build new name if we have a workspace. Scratchpad is ignored since it doesn' have a
+                // number
+                if node.node_type == NodeType::Workspace
+                    && let Some(workspace_node) = node.num
+                    && workspace_node == id
+                {
+                    // Get the window names and map them according to the config. If no match
+                    // exists we use the id of the window
+                    let window_names: Vec<String> = node
+                        .get_window_names()
+                        .iter()
+                        .map(|name| self.config.read().unwrap().get_symbol(name))
+                        .rev()
+                        .collect();
+                    return window_names.join("|");
+                }
+            }
+            String::new()
+        });
+        Ok(result)
+    }
+}
+
 impl SwayNameManager {
     pub async fn run(&mut self) -> Fallible<()> {
         let config = self.config.read().unwrap().clone();
@@ -140,10 +198,7 @@ impl SwayNameManager {
                         match windowevent.change {
                             // TODO: On New we don't need to update all of them
                             WindowChange::New | WindowChange::Close | WindowChange::Move => {
-                                //let _ = Self::handle_event(&windowevent.container);
-                                let root_node = Connection::new().await?.get_tree().await?;
-                                let config = self.config.read().unwrap().clone();
-                                root_node.update_workspace_names(&config).await;
+                                let _ = self.update_all();
                             }
                             _ => {}
                         }

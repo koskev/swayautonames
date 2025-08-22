@@ -26,15 +26,7 @@ impl WindowManager for HyprlandManager {
             .ok_or(anyhow!("not found"))?;
         let workspace_clients = clients.iter().filter(|c| c.workspace.id == workspace.id);
         let names: Vec<String> = workspace_clients
-            .map(|client| {
-                self.config
-                    .read()
-                    .unwrap()
-                    .app_symbols
-                    .get(&client.class.clone())
-                    .unwrap_or(&client.class.clone())
-                    .clone()
-            })
+            .map(|client| self.config.read().unwrap().get_symbol(&client.class))
             .collect();
         let new_name = names.join("|");
         Ok(new_name)
