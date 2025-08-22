@@ -131,7 +131,7 @@ impl WindowManager for SwayNameManager {
 
             let workspace = workspaces
                 .iter()
-                .find(|w| w.id == id as i64)
+                .find(|w| w.num == id)
                 .ok_or(anyhow!("not found"))
                 .unwrap();
             let old_name = workspace.name.clone();
@@ -146,7 +146,7 @@ impl WindowManager for SwayNameManager {
         let result = futures::executor::block_on(async {
             let mut connection = Connection::new().await.unwrap();
             let workspaces = connection.get_workspaces().await.unwrap();
-            workspaces.iter().map(|w| w.id as i32).collect()
+            workspaces.iter().map(|w| w.num).collect()
         });
         Ok(result)
     }
