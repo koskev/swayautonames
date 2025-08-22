@@ -21,9 +21,18 @@ struct SwayNameManager {
 }
 
 trait WindowManager {
-    fn get_workspace_num(&self) -> i32;
-    fn get_workspace_name(&self, id: i32) -> String;
-    fn update_workspace(&self, id: i32, name: &str);
+    fn get_workspaces(&self) -> Result<Vec<i32>>;
+    fn get_workspace_name(&self, id: i32) -> Result<String>;
+    fn update_workspace(&self, id: i32, name: &str) -> Result<()>;
+
+    fn update_all(&self) -> Result<()> {
+        let workspaces = self.get_workspaces()?;
+        for i in workspaces {
+            let name = self.get_workspace_name(i)?;
+            self.update_workspace(i, &name)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Parser, Debug)]
