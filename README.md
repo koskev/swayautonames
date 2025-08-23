@@ -17,7 +17,8 @@ The config has the form
 {
     "app_symbols": {
         "app_name": "symbol"
-    }
+    },
+    "fullscreen_color": "orange"
 }
 ```
 

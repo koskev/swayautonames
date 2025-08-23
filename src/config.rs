@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Default, Debug, Clone)]
 pub struct SwayNameManagerConfig {
     pub app_symbols: HashMap<String, String>,
+    /// If set this wraps any fullscreen applications on hyprland in a <span foreground={color}>
+    pub fullscreen_color: Option<String>,
 }
 
 impl SwayNameManagerConfig {
