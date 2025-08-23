@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::error::Error;
 use std::sync::{Arc, RwLock};
 
@@ -25,8 +26,20 @@ impl WindowManager for HyprlandManager {
             .iter()
             .find(|w| w.id == id)
             .ok_or(anyhow!("not found"))?;
-        let workspace_clients = clients.iter().filter(|c| c.workspace.id == workspace.id);
+        let mut workspace_clients: Vec<&Client> = clients
+            .iter()
+            .filter(|c| c.workspace.id == workspace.id)
+            .collect();
+        // XXX: When in Fullscreen we can't get the information about the actual position of the
+        // window. Since I'd love to stay stateless we'll just push the window to the front
+        workspace_clients.sort_by(|a, b| {
+            if a.fullscreen != FullscreenMode::None {
+                return Ordering::Less;
+            }
+            a.at.cmp(&b.at)
+        });
         let names: Vec<String> = workspace_clients
+            .iter()
             .map(|client| {
                 let name = config.get_symbol(&client.class);
                 if let Some(color) = &config.fullscreen_color
