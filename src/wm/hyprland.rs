@@ -6,6 +6,7 @@ use anyhow::{Result, anyhow};
 use hyprland::dispatch::{Dispatch, DispatchType};
 use hyprland::prelude::*;
 use hyprland::{data::*, event_listener::EventListener};
+use log::error;
 
 use crate::WindowManager;
 use crate::config::SwayNameManagerConfig;
@@ -74,19 +75,27 @@ impl HyprlandManager {
         let config = self.config.clone();
 
         event_listener.add_window_opened_handler(move |_| {
-            Self::update(config.clone()).unwrap();
+            if let Err(e) = Self::update(config.clone()) {
+                error!("Could not update on window open {e}");
+            };
         });
         let config = self.config.clone();
         event_listener.add_window_moved_handler(move |_| {
-            Self::update(config.clone()).unwrap();
+            if let Err(e) = Self::update(config.clone()) {
+                error!("Could not update on window moved {e}");
+            };
         });
         let config = self.config.clone();
         event_listener.add_window_closed_handler(move |_| {
-            Self::update(config.clone()).unwrap();
+            if let Err(e) = Self::update(config.clone()) {
+                error!("Could not update on window closed {e}");
+            }
         });
         let config = self.config.clone();
         event_listener.add_fullscreen_state_changed_handler(move |_| {
-            Self::update(config.clone()).unwrap();
+            if let Err(e) = Self::update(config.clone()) {
+                error!("Could not update on fullscreen changed {e}");
+            }
         });
         event_listener.start_listener()?;
 
