@@ -103,8 +103,18 @@ async fn main() -> Result<()> {
     {
         let hyprland_config = config.clone();
         tokio::spawn(async move {
-            wm::hyprland::HyprlandManager {
-                config: hyprland_config,
+            loop {
+                let res = wm::hyprland::HyprlandManager {
+                    config: hyprland_config.clone(),
+                }
+                .run()
+                .await;
+                match res {
+                    Ok(_) => break,
+                    Err(err) => {
+                        error!("Recreating because HyprlandManager returned with error: {err}");
+                    }
+                }
             }
             .run()
             .await
