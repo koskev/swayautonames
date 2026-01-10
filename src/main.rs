@@ -93,22 +93,24 @@ async fn main() -> Result<()> {
         &selected_config_path.clone().unwrap_or_default(),
     )));
     #[cfg(feature = "sway")]
-    let mut manager = SwayNameManager::new(config.clone());
-    #[cfg(feature = "sway")]
-    tokio::spawn(async move {
-        manager.run().await.unwrap();
-    });
+    {
+        let mut manager = SwayNameManager::new(config.clone());
+        tokio::spawn(async move {
+            manager.run().await.unwrap();
+        });
+    }
     #[cfg(feature = "hyprland")]
-    let hyprland_config = config.clone();
-    #[cfg(feature = "hyprland")]
-    tokio::spawn(async move {
-        wm::hyprland::HyprlandManager {
-            config: hyprland_config,
-        }
-        .run()
-        .await
-        .unwrap();
-    });
+    {
+        let hyprland_config = config.clone();
+        tokio::spawn(async move {
+            wm::hyprland::HyprlandManager {
+                config: hyprland_config,
+            }
+            .run()
+            .await
+            .unwrap();
+        });
+    }
     if let Some(config_path) = &selected_config_path {
         let inotify = Inotify::init()?;
         let mask = WatchMask::MODIFY | WatchMask::CREATE | WatchMask::DELETE_SELF;
