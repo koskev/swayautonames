@@ -35,12 +35,24 @@ trait WindowManager {
     }
 }
 
+#[derive(clap::ValueEnum, Debug, Clone, PartialEq, Eq)]
+pub enum WindowManagerType {
+    #[cfg(feature = "hyprland")]
+    Hyprland,
+    #[cfg(feature = "sway")]
+    Sway,
+    All,
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Config to load
     #[arg(short, long)]
     config: Option<PathBuf>,
+
+    #[arg(short, long)]
+    window_manager: WindowManagerType,
 }
 
 fn get_config_paths(aditional_paths: &Option<PathBuf>) -> Vec<PathBuf> {
@@ -93,6 +105,8 @@ async fn main() -> Result<()> {
         &selected_config_path.clone().unwrap_or_default(),
     )));
     #[cfg(feature = "sway")]
+    if args.window_manager == WindowManagerType::Sway
+        || args.window_manager == WindowManagerType::All
     {
         let mut manager = SwayNameManager::new(config.clone());
         tokio::spawn(async move {
@@ -100,6 +114,8 @@ async fn main() -> Result<()> {
         });
     }
     #[cfg(feature = "hyprland")]
+    if args.window_manager == WindowManagerType::Hyprland
+        || args.window_manager == WindowManagerType::All
     {
         let hyprland_config = config.clone();
         tokio::spawn(async move {
@@ -116,9 +132,6 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            .run()
-            .await
-            .unwrap();
         });
     }
     if let Some(config_path) = &selected_config_path {
