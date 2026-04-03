@@ -12,8 +12,7 @@ pub struct SwayNameManagerConfig {
 
 impl SwayNameManagerConfig {
     pub fn get_symbol(&self, name: &str) -> String {
-        let symbol = self.app_symbols.get(name).map_or(name, |v| v).to_string();
-        symbol
+        self.app_symbols.get(name).map_or(name, |v| v).to_string()
     }
     pub fn from_file(config_path: &PathBuf) -> Self {
         let file_result = File::open(config_path);

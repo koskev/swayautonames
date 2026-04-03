@@ -92,8 +92,9 @@ impl Autorename for Node {
             });
             // Build new name if we have a workspace. Scratchpad is ignored since it doesn' have a
             // number
-            if node.node_type == NodeType::Workspace && node.num.is_some() {
-                let workspace_num = node.num.unwrap();
+            if node.node_type == NodeType::Workspace
+                && let Some(workspace_num) = node.num
+            {
                 // Get the window names and map them according to the config. If no match
                 // exists we use the id of the window
                 let window_names: Vec<String> = node

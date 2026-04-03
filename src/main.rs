@@ -143,11 +143,11 @@ async fn main() -> Result<()> {
         let mut stream = inotify.into_event_stream(&mut buffer)?;
 
         while let Some(event_or_error) = stream.next().await {
-            if let Ok(event) = event_or_error {
-                if event.mask.contains(EventMask::DELETE_SELF) {
-                    // Recreate inotify. Some editors delete the file and recreate it (e.g. neovim)
-                    stream.watches().add(config_path, mask)?;
-                }
+            if let Ok(event) = event_or_error
+                && event.mask.contains(EventMask::DELETE_SELF)
+            {
+                // Recreate inotify. Some editors delete the file and recreate it (e.g. neovim)
+                stream.watches().add(config_path, mask)?;
             }
             let new_config = SwayNameManagerConfig::from_file(config_path);
             *config.write().unwrap() = new_config.clone();
