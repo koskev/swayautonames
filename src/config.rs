@@ -11,8 +11,12 @@ pub struct SwayNameManagerConfig {
 }
 
 impl SwayNameManagerConfig {
-    pub fn get_symbol(&self, name: &str) -> String {
-        self.app_symbols.get(name).map_or(name, |v| v).to_string()
+    pub fn get_symbol(&self, names: &[&str]) -> String {
+        names
+            .iter()
+            .find_map(|val| self.app_symbols.get(*val))
+            .map(|val| val.to_string())
+            .unwrap_or(names.first().unwrap_or(&"*invalid*").to_string())
     }
     pub fn from_file(config_path: &PathBuf) -> Self {
         let file_result = File::open(config_path);

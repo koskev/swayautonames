@@ -100,7 +100,7 @@ impl Autorename for Node {
                 let window_names: Vec<String> = node
                     .get_window_names()
                     .iter()
-                    .map(|name| name_config.get_symbol(name))
+                    .map(|name| name_config.get_symbol(&[name]))
                     .rev()
                     .collect();
                 // Special case if the list is empty
@@ -172,7 +172,7 @@ impl WindowManager for SwayNameManager {
                     let window_names: Vec<String> = node
                         .get_window_names()
                         .iter()
-                        .map(|name| self.config.read().unwrap().get_symbol(name))
+                        .map(|name| self.config.read().unwrap().get_symbol(&[name]))
                         .rev()
                         .collect();
                     return window_names.join("|");

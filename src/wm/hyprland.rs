@@ -42,7 +42,7 @@ impl WindowManager for HyprlandManager {
         let names: Vec<String> = workspace_clients
             .iter()
             .map(|client| {
-                let name = config.get_symbol(&client.class);
+                let name = config.get_symbol(&[&client.class, &client.initial_title]);
                 if let Some(color) = &config.fullscreen_color
                     && client.fullscreen != FullscreenMode::None
                 {
